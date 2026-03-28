@@ -1,12 +1,12 @@
 /**
  * BlueMesh BLE Service Layer
  * 
- * Handles all Bluetooth Low Energy communication using @capacitor-community/bluetooth-le.
- * In browser fallback: uses Web Bluetooth API (limited: central-only, no advertising).
- * Full mesh support available in native Capacitor builds.
+ * Uses @capgo/capacitor-bluetooth-low-energy which supports both
+ * central mode (scanning/connecting) AND peripheral mode (advertising/GATT server).
+ * This enables two devices to discover each other and exchange messages via BLE.
  */
 
-import { BleClient, ScanResult } from '@capacitor-community/bluetooth-le';
+import { BluetoothLowEnergy } from '@capgo/capacitor-bluetooth-low-energy';
 
 // Custom BlueMesh BLE Service UUID
 const BLUEMESH_SERVICE_UUID = '0000beef-0000-1000-8000-00805f9b34fb';
@@ -64,6 +64,7 @@ class BlueMeshBleService {
   private logs: LogEntry[] = [];
   private isInitialized = false;
   private userId = '';
+  private isAdvertising = false;
 
   setCallbacks(callbacks: Partial<BleEventCallback>) {
     this._callbacks = callbacks;
@@ -112,7 +113,6 @@ class BlueMeshBleService {
       return { supported: true };
     }
 
-    // Check Web Bluetooth in browser
     const nav = navigator as any;
     if (!nav.bluetooth) {
       return {
@@ -147,19 +147,43 @@ class BlueMeshBleService {
       this.setState('initializing');
       this.log('info', 'Alustetaan Bluetooth LE...');
 
-      await BleClient.initialize({ androidNeverForLocation: true });
+      await BluetoothLowEnergy.initialize();
 
-      const enabled = await BleClient.isEnabled();
+      const { available } = await BluetoothLowEnergy.isAvailable();
+      if (!available) {
+        this.log('error', 'Bluetooth ei ole käytettävissä');
+        this.setState('error', 'Bluetooth ei ole käytettävissä tässä laitteessa.');
+        return false;
+      }
+
+      const { enabled } = await BluetoothLowEnergy.isEnabled();
       if (!enabled) {
         this.log('error', 'Bluetooth ei ole päällä');
         this.setState('error', 'Bluetooth ei ole päällä. Ota Bluetooth käyttöön laitteen asetuksista.');
         return false;
       }
 
+      // Set up scan listener
+      BluetoothLowEnergy.addListener('deviceScanned', (event: any) => {
+        this.handleScanResult(event);
+      });
+
+      // Set up disconnect listener
+      BluetoothLowEnergy.addListener('deviceDisconnected', (event: any) => {
+        this.handleDisconnect(event.deviceId);
+      });
+
+      // Set up characteristic notification listener
+      BluetoothLowEnergy.addListener('characteristicChanged', (event: any) => {
+        if (event.characteristic === MESSAGE_CHAR_UUID) {
+          this.handleIncomingData(event.deviceId, event.value);
+        }
+      });
+
       this.isInitialized = true;
       this.log('info', 'Bluetooth LE alustettu onnistuneesti');
 
-      // Käynnistä mainostus vain natiivissa ympäristössä
+      // Start advertising in native environment
       if (this.isNative()) {
         await this.startAdvertising();
       }
@@ -174,12 +198,40 @@ class BlueMeshBleService {
     }
   }
 
-  /** Start advertising BlueMesh service so other devices can discover us.
-   *  NOTE: addService/startAdvertising are NOT available in @capacitor-community/bluetooth-le.
-   *  Advertising requires a native plugin or custom Capacitor plugin.
-   *  This is a no-op placeholder for future native implementation. */
+  /** Start advertising BlueMesh service (peripheral mode) so other devices can discover us */
   async startAdvertising(): Promise<void> {
-    this.log('warn', 'BLE-mainostus ei ole vielä tuettu tällä pluginilla. Käytä skannausta löytääksesi laitteita.');
+    if (!this.isNative()) {
+      this.log('warn', 'Mainostusta ei tueta selainympäristössä');
+      return;
+    }
+
+    if (this.isAdvertising) return;
+
+    try {
+      this.log('info', 'Käynnistetään BLE-mainostus (peripheral mode)...');
+
+      await BluetoothLowEnergy.startAdvertising({
+        name: this.userId ? `BlueMesh-${this.userId.slice(0, 8)}` : 'BlueMesh-node',
+        services: [BLUEMESH_SERVICE_UUID],
+      });
+
+      this.isAdvertising = true;
+      this.log('info', 'BLE-mainostus käynnissä – laite näkyy muille BlueMesh-solmuille');
+    } catch (error: any) {
+      this.log('error', 'Mainostus epäonnistui: ' + (error?.message || 'tuntematon virhe'));
+    }
+  }
+
+  /** Stop advertising */
+  async stopAdvertising(): Promise<void> {
+    if (!this.isAdvertising) return;
+    try {
+      await BluetoothLowEnergy.stopAdvertising();
+      this.isAdvertising = false;
+      this.log('info', 'BLE-mainostus pysäytetty');
+    } catch (error: any) {
+      this.log('error', 'Mainostuksen pysäytys epäonnistui: ' + (error?.message || ''));
+    }
   }
 
   /** Start scanning for BlueMesh devices */
@@ -194,13 +246,12 @@ class BlueMeshBleService {
       this.setState('scanning');
       this.log('info', 'Skannataan lähellä olevia laitteita...');
 
-      await BleClient.requestLEScan(
-        { services: [BLUEMESH_SERVICE_UUID], allowDuplicates: false },
-        (result: ScanResult) => {
-          this.handleScanResult(result);
-        }
-      );
+      await BluetoothLowEnergy.startScan({
+        services: [BLUEMESH_SERVICE_UUID],
+        timeout: durationMs,
+      });
 
+      // Auto-stop after timeout
       setTimeout(() => this.stopScan(), durationMs);
     } catch (error: any) {
       const msg = error?.message || 'Tuntematon virhe';
@@ -250,7 +301,7 @@ class BlueMeshBleService {
   /** Stop scanning */
   async stopScan(): Promise<void> {
     try {
-      await BleClient.stopLEScan();
+      await BluetoothLowEnergy.stopScan();
       this.log('info', `Skannaus päättyi. Löytyi ${this.foundDevices.size} laitetta.`);
       if (this.state === 'scanning') this.setState('idle');
     } catch {
@@ -258,13 +309,16 @@ class BlueMeshBleService {
     }
   }
 
-  private handleScanResult(result: ScanResult) {
-    const deviceId = result.device.deviceId;
-    const name = result.device.name || result.localName || `BlueMesh-${deviceId.slice(-4)}`;
-    const rssi = result.rssi ?? -80;
+  private handleScanResult(event: any) {
+    const device = event.device || event;
+    const deviceId = device.deviceId;
+    if (!deviceId) return;
+
+    const name = device.name || `BlueMesh-${deviceId.slice(-4)}`;
+    const rssi = device.rssi ?? event.rssi ?? -80;
 
     const info: BleDeviceInfo = {
-      device: result.device,
+      device: { deviceId, name: device.name },
       rssi,
       name,
       state: 'found'
@@ -288,46 +342,56 @@ class BlueMeshBleService {
       deviceInfo.state = 'connecting';
       this.log('info', `Yhdistetään laitteeseen ${deviceInfo.name}...`);
 
-      await BleClient.connect(deviceId, (disconnectedId) => {
-        this.handleDisconnect(disconnectedId);
-      });
+      await BluetoothLowEnergy.connect({ deviceId });
 
-      const services = await BleClient.getServices(deviceId);
+      // Discover services
+      await BluetoothLowEnergy.discoverServices({ deviceId });
+      const servicesResult = await BluetoothLowEnergy.getServices({ deviceId });
+      const services = (servicesResult as any)?.services ?? [];
       this.log('info', `Palvelut löydetty: ${services.length} kpl`);
 
-      const hasBlueMesh = services.some(s =>
-        s.uuid.toLowerCase() === BLUEMESH_SERVICE_UUID.toLowerCase()
+      const hasBlueMesh = services?.some((s: any) =>
+        (s.id || s.uuid || '').toLowerCase() === BLUEMESH_SERVICE_UUID.toLowerCase()
       );
 
       if (!hasBlueMesh) {
         this.log('warn', 'Laite ei tarjoa BlueMesh-palvelua');
-        await BleClient.disconnect(deviceId);
+        await BluetoothLowEnergy.disconnect({ deviceId });
         deviceInfo.state = 'error';
         this.setState('error', 'Laite ei ole BlueMesh-yhteensopiva.');
         return false;
       }
 
       // Listen for incoming messages
-      await BleClient.startNotifications(
+      await BluetoothLowEnergy.startCharacteristicNotifications({
         deviceId,
-        BLUEMESH_SERVICE_UUID,
-        MESSAGE_CHAR_UUID,
-        (value: DataView) => {
-          this.handleIncomingData(deviceId, value);
-        }
-      );
+        service: BLUEMESH_SERVICE_UUID,
+        characteristic: MESSAGE_CHAR_UUID,
+      });
 
-      // Exchange identity
+      // Exchange identity – write our userId
       const encoder = new TextEncoder();
-      const idBytes = encoder.encode(this.userId);
-      const idDataView = new DataView(idBytes.buffer);
-      await BleClient.write(deviceId, BLUEMESH_SERVICE_UUID, IDENTITY_CHAR_UUID, idDataView);
+      const idBytes = Array.from(encoder.encode(this.userId));
+      await BluetoothLowEnergy.writeCharacteristic({
+        deviceId,
+        service: BLUEMESH_SERVICE_UUID,
+        characteristic: IDENTITY_CHAR_UUID,
+        value: idBytes,
+      });
 
+      // Read remote identity
       try {
-        const identityData = await BleClient.read(deviceId, BLUEMESH_SERVICE_UUID, IDENTITY_CHAR_UUID);
-        const decoder = new TextDecoder();
-        deviceInfo.userId = decoder.decode(identityData.buffer);
-        this.log('info', `Vastapuolen tunnus: ${deviceInfo.userId}`);
+        const result = await BluetoothLowEnergy.readCharacteristic({
+          deviceId,
+          service: BLUEMESH_SERVICE_UUID,
+          characteristic: IDENTITY_CHAR_UUID,
+        });
+        if (result.value) {
+          const decoder = new TextDecoder();
+          const bytes = new Uint8Array(result.value);
+          deviceInfo.userId = decoder.decode(bytes);
+          this.log('info', `Vastapuolen tunnus: ${deviceInfo.userId}`);
+        }
       } catch {
         deviceInfo.userId = `device-${deviceId.slice(-4)}`;
       }
@@ -361,13 +425,17 @@ class BlueMeshBleService {
     });
 
     const encoder = new TextEncoder();
-    const data = encoder.encode(payload);
-    const dataView = new DataView(data.buffer);
+    const data = Array.from(encoder.encode(payload));
     let anySuccess = false;
 
     for (const [deviceId, deviceInfo] of this.connectedDevices) {
       try {
-        await BleClient.write(deviceId, BLUEMESH_SERVICE_UUID, MESSAGE_CHAR_UUID, dataView);
+        await BluetoothLowEnergy.writeCharacteristic({
+          deviceId,
+          service: BLUEMESH_SERVICE_UUID,
+          characteristic: MESSAGE_CHAR_UUID,
+          value: data,
+        });
         this.log('info', `Viesti lähetetty → ${deviceInfo.name}`);
         this._callbacks.onMessageDelivered?.(messageId);
         anySuccess = true;
@@ -379,10 +447,19 @@ class BlueMeshBleService {
     return anySuccess;
   }
 
-  private handleIncomingData(deviceId: string, value: DataView) {
+  private handleIncomingData(deviceId: string, value: any) {
     try {
-      const decoder = new TextDecoder();
-      const raw = decoder.decode(value.buffer);
+      let raw: string;
+      if (value instanceof ArrayBuffer || value instanceof DataView) {
+        const decoder = new TextDecoder();
+        raw = decoder.decode(value instanceof DataView ? value.buffer : value);
+      } else if (Array.isArray(value)) {
+        const decoder = new TextDecoder();
+        raw = decoder.decode(new Uint8Array(value));
+      } else {
+        raw = String(value);
+      }
+
       const parsed = JSON.parse(raw);
 
       const message: BleMessage = {
@@ -396,12 +473,10 @@ class BlueMeshBleService {
       this.log('info', `Viesti vastaanotettu ← ${message.senderId}`);
       this._callbacks.onMessageReceived?.(message);
     } catch {
-      const decoder = new TextDecoder();
-      const text = decoder.decode(value.buffer);
       this._callbacks.onMessageReceived?.({
         id: `msg-${Date.now()}`,
         senderId: `device-${deviceId.slice(-4)}`,
-        text,
+        text: String(value),
         timestamp: Date.now(),
         delivered: true
       });
@@ -420,8 +495,12 @@ class BlueMeshBleService {
 
   async disconnect(deviceId: string): Promise<void> {
     try {
-      await BleClient.stopNotifications(deviceId, BLUEMESH_SERVICE_UUID, MESSAGE_CHAR_UUID);
-      await BleClient.disconnect(deviceId);
+      await BluetoothLowEnergy.stopCharacteristicNotifications({
+        deviceId,
+        service: BLUEMESH_SERVICE_UUID,
+        characteristic: MESSAGE_CHAR_UUID,
+      });
+      await BluetoothLowEnergy.disconnect({ deviceId });
       this.connectedDevices.delete(deviceId);
       this.log('info', 'Yhteys katkaistu');
       if (this.connectedDevices.size === 0) this.setState('idle');
@@ -447,11 +526,12 @@ class BlueMeshBleService {
       bleSupported: !!nav.bluetooth,
       isNative: this.isNative(),
       state: this.state,
+      isAdvertising: this.isAdvertising,
       connectedCount: this.connectedDevices.size,
       foundCount: this.foundDevices.size,
       logsCount: this.logs.length,
       platform: this.isNative() ? 'Capacitor (Native)' : 'Web Browser',
-      api: this.isNative() ? '@capacitor-community/bluetooth-le' : 'Web Bluetooth API'
+      api: '@capgo/capacitor-bluetooth-low-energy'
     };
   }
 }
