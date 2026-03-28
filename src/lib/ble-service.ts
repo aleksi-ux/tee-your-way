@@ -553,7 +553,7 @@ class BlueMeshBleService {
   }
 
   /** Process a received MeshPacket: deliver locally, relay onward */
-  private handleMeshPacket(packet: MeshPacket, sourceDeviceId: string) {
+  private async handleMeshPacket(packet: MeshPacket, sourceDeviceId: string) {
     if (packet.senderId === this.userId) return;
 
     if (!shouldRelay(packet)) {
