@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Lock, Unlock, Trash2, Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Lock, Unlock, Trash2, Eye, EyeOff, Fingerprint, ShieldCheck, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { UserSettings } from "@/types/mesh";
 import { generateFingerprint } from "@/lib/crypto";
+import { bleService } from "@/lib/ble-service";
 
 interface SettingsPanelProps {
   settings: UserSettings;
@@ -18,6 +19,7 @@ const SettingsPanel = ({ settings, userId, onUpdate, onBack }: SettingsPanelProp
   const [code, setCode] = useState(settings.privacyCode);
   const [fingerprint, setFingerprint] = useState(settings.channelFingerprint);
   const [showCode, setShowCode] = useState(false);
+  const [autoReconnect, setAutoReconnect] = useState(true);
 
   useEffect(() => {
     if (code.length >= 5) {
@@ -154,11 +156,39 @@ const SettingsPanel = ({ settings, userId, onUpdate, onBack }: SettingsPanelProp
           </div>
         </motion.div>
 
-        {/* Wipe on close */}
+        {/* Auto-reconnect */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+        >
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-card border border-border">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Automaattinen uudelleenyhdistäminen
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Yhdistä automaattisesti uudelleen yhteyden katketessa
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={autoReconnect}
+              onCheckedChange={(checked) => {
+                setAutoReconnect(checked);
+                bleService.setAutoReconnect(checked);
+              }}
+            />
+          </div>
+        </motion.div>
+
+        {/* Wipe on close */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
         >
           <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-card border border-border">
             <div>
