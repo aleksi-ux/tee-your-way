@@ -65,6 +65,11 @@ class BlueMeshBleService {
   private isInitialized = false;
   private userId = '';
   private isAdvertising = false;
+  private autoReconnectEnabled = true;
+  private reconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private reconnectAttempts: Map<string, number> = new Map();
+  private static readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private static readonly RECONNECT_BASE_DELAY_MS = 2000;
 
   setCallbacks(callbacks: Partial<BleEventCallback>) {
     this._callbacks = callbacks;
