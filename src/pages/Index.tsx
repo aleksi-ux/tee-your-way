@@ -128,13 +128,7 @@ const Index = () => {
         {view === "chat" && (
           <motion.div key="chat" {...pageVariants} transition={{ duration: 0.2 }}>
             <div className="flex flex-col h-screen">
-              <ConnectionStatusBar
-                state={ble.state}
-                connectedCount={ble.connectedDevices.length}
-                error={ble.error}
-                onTap={handleConnectionBarTap}
-              />
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden relative">
                 <ChatScreen
                   userId={userId}
                   messages={messages}
@@ -146,6 +140,19 @@ const Index = () => {
                   codeLocked={settings.codeLocked}
                   bleConnected={ble.state === 'connected'}
                 />
+                {/* Centered BLE status overlay */}
+                {messages.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="pointer-events-auto">
+                      <ConnectionStatusBar
+                        state={ble.state}
+                        connectedCount={ble.connectedDevices.length}
+                        error={ble.error}
+                        onTap={handleConnectionBarTap}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
