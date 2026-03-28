@@ -155,11 +155,39 @@ const SettingsPanel = ({ settings, userId, onUpdate, onBack }: SettingsPanelProp
           </div>
         </motion.div>
 
-        {/* Wipe on close */}
+        {/* Auto-reconnect */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+        >
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-card border border-border">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Automaattinen uudelleenyhdistäminen
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Yhdistä automaattisesti uudelleen yhteyden katketessa
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={autoReconnect}
+              onCheckedChange={(checked) => {
+                setAutoReconnect(checked);
+                bleService.setAutoReconnect(checked);
+              }}
+            />
+          </div>
+        </motion.div>
+
+        {/* Wipe on close */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
         >
           <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-card border border-border">
             <div>
