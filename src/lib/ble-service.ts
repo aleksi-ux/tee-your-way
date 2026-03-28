@@ -418,25 +418,36 @@ class BlueMeshBleService {
     }
   }
 
-  /** Send a message to connected devices */
+  /** Send a message as mesh packets to all connected devices */
   async sendMessage(text: string, messageId: string): Promise<boolean> {
     if (this.connectedDevices.size === 0) {
       this.log('warn', 'Ei yhdistettyjä laitteita');
       return false;
     }
 
-    const payload = JSON.stringify({
-      id: messageId,
-      senderId: this.userId,
-      text,
-      timestamp: Date.now()
-    });
+    const packets = createPackets(this.userId, text, false, 'public');
+    this.log('info', `Luotu ${packets.length} mesh-pakettia (TTL=${packets[0]?.hopCount})`);
 
+    let anySuccess = false;
+    for (const packet of packets) {
+      const ok = await this.broadcastPacket(packet);
+      if (ok) anySuccess = true;
+    }
+
+    if (anySuccess) {
+      this._callbacks.onMessageDelivered?.(messageId);
+    }
+    return anySuccess;
+  }
+
+  /** Broadcast a single MeshPacket to all connected peers */
+  private async broadcastPacket(packet: MeshPacket, excludeDeviceId?: string): Promise<boolean> {
     const encoder = new TextEncoder();
-    const data = Array.from(encoder.encode(payload));
+    const data = Array.from(encoder.encode(JSON.stringify(packet)));
     let anySuccess = false;
 
     for (const [deviceId, deviceInfo] of this.connectedDevices) {
+      if (deviceId === excludeDeviceId) continue;
       try {
         await BluetoothLowEnergy.writeCharacteristic({
           deviceId,
@@ -444,18 +455,16 @@ class BlueMeshBleService {
           characteristic: MESSAGE_CHAR_UUID,
           value: data,
         });
-        this.log('info', `Viesti lähetetty → ${deviceInfo.name}`);
-        this._callbacks.onMessageDelivered?.(messageId);
         anySuccess = true;
       } catch (error: any) {
         this.log('error', `Lähetys epäonnistui (${deviceInfo.name}): ${error.message}`);
       }
     }
-
     return anySuccess;
   }
 
-  private handleIncomingData(deviceId: string, value: any) {
+  /** Handle incoming BLE data – parse as MeshPacket, relay if needed */
+  private handleIncomingData(sourceDeviceId: string, value: any) {
     try {
       let raw: string;
       if (value instanceof ArrayBuffer || value instanceof DataView) {
@@ -470,25 +479,76 @@ class BlueMeshBleService {
 
       const parsed = JSON.parse(raw);
 
-      const message: BleMessage = {
-        id: parsed.id || `msg-${Date.now()}`,
-        senderId: parsed.senderId || `device-${deviceId.slice(-4)}`,
-        text: parsed.text || raw,
-        timestamp: parsed.timestamp || Date.now(),
-        delivered: true
-      };
-
-      this.log('info', `Viesti vastaanotettu ← ${message.senderId}`);
-      this._callbacks.onMessageReceived?.(message);
+      // Check if this is a mesh packet (has uniqueId and hopCount)
+      if (parsed.uniqueId && typeof parsed.hopCount === 'number') {
+        this.handleMeshPacket(parsed as MeshPacket, sourceDeviceId);
+      } else {
+        // Legacy plain message
+        const message: BleMessage = {
+          id: parsed.id || `msg-${Date.now()}`,
+          senderId: parsed.senderId || `device-${sourceDeviceId.slice(-4)}`,
+          text: parsed.text || raw,
+          timestamp: parsed.timestamp || Date.now(),
+          delivered: true
+        };
+        this.log('info', `Viesti vastaanotettu ← ${message.senderId}`);
+        this._callbacks.onMessageReceived?.(message);
+      }
     } catch {
       this._callbacks.onMessageReceived?.({
         id: `msg-${Date.now()}`,
-        senderId: `device-${deviceId.slice(-4)}`,
+        senderId: `device-${sourceDeviceId.slice(-4)}`,
         text: String(value),
         timestamp: Date.now(),
         delivered: true
       });
     }
+  }
+
+  /** Process a received MeshPacket: deliver locally, relay onward */
+  private handleMeshPacket(packet: MeshPacket, sourceDeviceId: string) {
+    if (packet.senderId === this.userId) return;
+
+    if (!shouldRelay(packet)) {
+      this.log('info', `Paketti ${packet.uniqueId.slice(0, 8)}… jo nähty tai TTL=0`);
+      return;
+    }
+
+    const hopsUsed = packet.maxHops - packet.hopCount;
+    this.log('info', `Mesh-paketti: ${packet.uniqueId.slice(0, 8)}… (${hopsUsed} hoppia, TTL=${packet.hopCount})`);
+
+    // Handle chunked messages
+    if (packet.chunk) {
+      const batchId = packet.uniqueId.split('-').slice(0, -1).join('-');
+      const existing = this.pendingChunks.get(batchId) || [];
+      existing.push(packet);
+      this.pendingChunks.set(batchId, existing);
+
+      const reassembled = reassembleChunks(existing);
+      if (reassembled) {
+        this.pendingChunks.delete(batchId);
+        this.deliverMessage(packet.senderId, reassembled, packet.timestamp, packet.uniqueId);
+      }
+    } else {
+      this.deliverMessage(packet.senderId, packet.payload, packet.timestamp, packet.uniqueId);
+    }
+
+    // Relay: decrement TTL and rebroadcast after random delay
+    if (packet.hopCount > 1) {
+      const relayPacket: MeshPacket = { ...packet, hopCount: packet.hopCount - 1 };
+      const delay = getRelayDelay();
+      this.log('info', `Välitetään ${packet.uniqueId.slice(0, 8)}… eteenpäin (TTL=${relayPacket.hopCount}, viive ${delay.toFixed(0)}ms)`);
+      setTimeout(() => {
+        this.broadcastPacket(relayPacket, sourceDeviceId);
+      }, delay);
+    }
+  }
+
+  /** Deliver a fully assembled message to the UI */
+  private deliverMessage(senderId: string, text: string, timestamp: number, id: string) {
+    const message: BleMessage = { id, senderId, text, timestamp, delivered: true };
+    this.log('info', `Viesti vastaanotettu ← ${senderId}`);
+    this._callbacks.onMessageReceived?.(message);
   }
 
   private handleDisconnect(deviceId: string) {
