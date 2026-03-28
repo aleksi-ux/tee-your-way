@@ -1,8 +1,3 @@
-/**
- * React hook for BlueMesh BLE service
- * Provides reactive state and methods for BLE operations
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { bleService, BleConnectionState, BleDeviceInfo, BleMessage, LogEntry } from '@/lib/ble-service';
 
@@ -13,32 +8,42 @@ export function useBle(userId: string) {
   const [connectedDevices, setConnectedDevices] = useState<BleDeviceInfo[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [supported, setSupported] = useState<boolean | null>(null);
-  const [supportMessage, setSupportMessage] = useState<string>('');
+  const [supportMessage, setSupportMessage] = useState('');
   const initialized = useRef(false);
+  const messageCallbackRef = useRef<((msg: BleMessage) => void) | null>(null);
+  const deliveredCallbackRef = useRef<((id: string) => void) | null>(null);
 
   useEffect(() => {
     bleService.setUserId(userId);
   }, [userId]);
 
+  // Set up callbacks once
   useEffect(() => {
-    bleService.setCallbacks({
-      onStateChange: (newState, err) => {
-        setState(newState);
-        setError(err || null);
-        setConnectedDevices(bleService.getConnectedDevices());
-      },
-      onDeviceFound: () => {
-        setDevices(bleService.getFoundDevices());
-      },
-      onDeviceDisconnected: () => {
-        setConnectedDevices(bleService.getConnectedDevices());
-      },
-      onMessageReceived: undefined, // Set by consumer
-      onMessageDelivered: undefined,
-      onLog: () => {
-        setLogs(bleService.getLogs());
-      }
-    });
+    const updateCallbacks = () => {
+      bleService.setCallbacks({
+        onStateChange: (newState, err) => {
+          setState(newState);
+          setError(err || null);
+          setConnectedDevices(bleService.getConnectedDevices());
+        },
+        onDeviceFound: () => {
+          setDevices(bleService.getFoundDevices());
+        },
+        onDeviceDisconnected: () => {
+          setConnectedDevices(bleService.getConnectedDevices());
+        },
+        onMessageReceived: (msg) => {
+          messageCallbackRef.current?.(msg);
+        },
+        onMessageDelivered: (id) => {
+          deliveredCallbackRef.current?.(id);
+        },
+        onLog: () => {
+          setLogs(bleService.getLogs());
+        }
+      });
+    };
+    updateCallbacks();
   }, []);
 
   const checkSupport = useCallback(async () => {
@@ -84,15 +89,8 @@ export function useBle(userId: string) {
     onReceived: (msg: BleMessage) => void,
     onDelivered?: (id: string) => void
   ) => {
-    bleService.setCallbacks({
-      ...bleService['callbacks'] as any,
-      onStateChange: (s, e) => { setState(s); setError(e || null); setConnectedDevices(bleService.getConnectedDevices()); },
-      onDeviceFound: () => { setDevices(bleService.getFoundDevices()); },
-      onDeviceDisconnected: () => { setConnectedDevices(bleService.getConnectedDevices()); },
-      onLog: () => { setLogs(bleService.getLogs()); },
-      onMessageReceived: onReceived,
-      onMessageDelivered: onDelivered
-    });
+    messageCallbackRef.current = onReceived;
+    deliveredCallbackRef.current = onDelivered || null;
   }, []);
 
   const getDiagnostics = useCallback(() => {
@@ -100,22 +98,10 @@ export function useBle(userId: string) {
   }, []);
 
   return {
-    state,
-    error,
-    devices,
-    connectedDevices,
-    logs,
-    supported,
-    supportMessage,
-    checkSupport,
-    initialize,
-    startScan,
-    stopScan,
-    connect,
-    disconnect,
-    disconnectAll,
-    sendMessage,
-    setMessageCallback,
-    getDiagnostics
+    state, error, devices, connectedDevices, logs,
+    supported, supportMessage,
+    checkSupport, initialize, startScan, stopScan,
+    connect, disconnect, disconnectAll, sendMessage,
+    setMessageCallback, getDiagnostics
   };
 }
