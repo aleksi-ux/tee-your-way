@@ -24,6 +24,7 @@ interface ChatScreenProps {
   privacyCode: string;
   codeLocked: boolean;
   bleConnected?: boolean;
+  bleStatus?: React.ReactNode;
 }
 
 const MAX_CHARS = 80;
