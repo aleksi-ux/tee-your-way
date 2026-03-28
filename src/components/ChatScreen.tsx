@@ -19,8 +19,11 @@ interface ChatScreenProps {
   messages: MeshMessage[];
   onSend: (msg: MeshMessage) => void;
   onOpenSettings: () => void;
+  onOpenScanner?: () => void;
+  onOpenDebug?: () => void;
   privacyCode: string;
   codeLocked: boolean;
+  bleConnected?: boolean;
 }
 
 const MAX_CHARS = 80;
