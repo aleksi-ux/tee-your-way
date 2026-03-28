@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatMode, MeshMessage } from "@/types/mesh";
-import { encryptMessage, decryptMessage } from "@/lib/crypto";
+import { decryptMessage } from "@/lib/crypto";
 import { createPackets } from "@/lib/mesh";
 
 interface ChatScreenProps {
