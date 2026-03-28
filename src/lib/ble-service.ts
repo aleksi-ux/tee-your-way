@@ -490,12 +490,73 @@ class BlueMeshBleService {
 
   private handleDisconnect(deviceId: string) {
     const device = this.connectedDevices.get(deviceId);
+    const deviceInfo = device ? { ...device } : null;
     this.connectedDevices.delete(deviceId);
     this.log('warn', `Yhteys katkesi: ${device?.name || deviceId}`);
     this._callbacks.onDeviceDisconnected?.(deviceId);
+
     if (this.connectedDevices.size === 0) {
       this.setState('disconnected');
     }
+
+    // Auto-reconnect if enabled
+    if (this.autoReconnectEnabled && deviceInfo) {
+      this.scheduleReconnect(deviceId, deviceInfo);
+    }
+  }
+
+  /** Schedule an auto-reconnect attempt with exponential backoff */
+  private scheduleReconnect(deviceId: string, deviceInfo: BleDeviceInfo) {
+    // Clear any existing timer
+    const existing = this.reconnectTimers.get(deviceId);
+    if (existing) clearTimeout(existing);
+
+    const attempts = this.reconnectAttempts.get(deviceId) || 0;
+    if (attempts >= BlueMeshBleService.MAX_RECONNECT_ATTEMPTS) {
+      this.log('warn', `Uudelleenyhdistäminen epäonnistui ${attempts} yrityksen jälkeen: ${deviceInfo.name}`);
+      this.reconnectAttempts.delete(deviceId);
+      return;
+    }
+
+    const delay = BlueMeshBleService.RECONNECT_BASE_DELAY_MS * Math.pow(2, attempts);
+    this.log('info', `Yritetään uudelleenyhdistämistä ${delay / 1000}s kuluttua (yritys ${attempts + 1}/${BlueMeshBleService.MAX_RECONNECT_ATTEMPTS})...`);
+
+    const timer = setTimeout(async () => {
+      this.reconnectTimers.delete(deviceId);
+      this.reconnectAttempts.set(deviceId, attempts + 1);
+
+      try {
+        // Re-add to found devices so connect() works
+        this.foundDevices.set(deviceId, { ...deviceInfo, state: 'found' });
+        const ok = await this.connect(deviceId);
+        if (ok) {
+          this.log('info', `Uudelleenyhdistäminen onnistui: ${deviceInfo.name}`);
+          this.reconnectAttempts.delete(deviceId);
+        } else {
+          this.scheduleReconnect(deviceId, deviceInfo);
+        }
+      } catch {
+        this.scheduleReconnect(deviceId, deviceInfo);
+      }
+    }, delay);
+
+    this.reconnectTimers.set(deviceId, timer);
+  }
+
+  /** Cancel all pending reconnect attempts */
+  cancelAllReconnects() {
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
+    this.reconnectAttempts.clear();
+    this.log('info', 'Kaikki uudelleenyhdistämisyritykset peruutettu');
+  }
+
+  setAutoReconnect(enabled: boolean) {
+    this.autoReconnectEnabled = enabled;
+    if (!enabled) this.cancelAllReconnects();
+    this.log('info', `Auto-reconnect: ${enabled ? 'päällä' : 'pois'}`);
   }
 
   async disconnect(deviceId: string): Promise<void> {
