@@ -246,10 +246,29 @@ class BlueMeshBleService {
     try {
       this.log('info', 'Käynnistetään BLE-mainostus (peripheral mode)...');
 
+      const encoder = new TextEncoder();
+      const idBytes = Array.from(encoder.encode(this.userId || 'unknown'));
+
       await BluetoothLowEnergy.startAdvertising({
         name: this.userId ? `BlueMesh-${this.userId.slice(0, 8)}` : 'BlueMesh-node',
-        services: [BLUEMESH_SERVICE_UUID],
-      });
+        services: [
+          {
+            id: BLUEMESH_SERVICE_UUID,
+            characteristics: [
+              {
+                id: MESSAGE_CHAR_UUID,
+                properties: ['read', 'write', 'notify'],
+                value: [],
+              },
+              {
+                id: IDENTITY_CHAR_UUID,
+                properties: ['read', 'write'],
+                value: idBytes,
+              },
+            ],
+          },
+        ],
+      } as any);
 
       this.isAdvertising = true;
       this.log('info', 'BLE-mainostus käynnissä – laite näkyy muille BlueMesh-solmuille');
