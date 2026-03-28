@@ -19,6 +19,7 @@ const SettingsPanel = ({ settings, userId, onUpdate, onBack }: SettingsPanelProp
   const [code, setCode] = useState(settings.privacyCode);
   const [fingerprint, setFingerprint] = useState(settings.channelFingerprint);
   const [showCode, setShowCode] = useState(false);
+  const [autoReconnect, setAutoReconnect] = useState(true);
 
   useEffect(() => {
     if (code.length >= 5) {
