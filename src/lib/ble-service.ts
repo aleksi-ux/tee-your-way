@@ -472,7 +472,7 @@ class BlueMeshBleService {
       return false;
     }
 
-    const packets = createPackets(this.userId, text, false, 'public');
+    const packets = await createPackets(this.userId, text, 'public');
     this.log('info', `Luotu ${packets.length} mesh-pakettia (TTL=${packets[0]?.hopCount})`);
 
     let anySuccess = false;
@@ -553,7 +553,7 @@ class BlueMeshBleService {
   }
 
   /** Process a received MeshPacket: deliver locally, relay onward */
-  private handleMeshPacket(packet: MeshPacket, sourceDeviceId: string) {
+  private async handleMeshPacket(packet: MeshPacket, sourceDeviceId: string) {
     if (packet.senderId === this.userId) return;
 
     if (!shouldRelay(packet)) {
@@ -571,7 +571,7 @@ class BlueMeshBleService {
       existing.push(packet);
       this.pendingChunks.set(batchId, existing);
 
-      const reassembled = reassembleChunks(existing);
+      const reassembled = await reassembleChunks(existing);
       if (reassembled) {
         this.pendingChunks.delete(batchId);
         this.deliverMessage(packet.senderId, reassembled, packet.timestamp, packet.uniqueId);
