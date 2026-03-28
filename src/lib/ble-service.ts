@@ -7,6 +7,8 @@
  */
 
 import { BluetoothLowEnergy } from '@capgo/capacitor-bluetooth-low-energy';
+import { createPackets, shouldRelay, getRelayDelay, reassembleChunks } from './mesh';
+import type { MeshPacket } from '@/types/mesh';
 
 // Custom BlueMesh BLE Service UUID
 const BLUEMESH_SERVICE_UUID = '0000beef-0000-1000-8000-00805f9b34fb';
@@ -70,6 +72,7 @@ class BlueMeshBleService {
   private reconnectAttempts: Map<string, number> = new Map();
   private static readonly MAX_RECONNECT_ATTEMPTS = 5;
   private static readonly RECONNECT_BASE_DELAY_MS = 2000;
+  private pendingChunks: Map<string, MeshPacket[]> = new Map();
 
   setCallbacks(callbacks: Partial<BleEventCallback>) {
     this._callbacks = callbacks;
