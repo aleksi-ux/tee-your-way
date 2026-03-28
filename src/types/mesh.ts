@@ -1,39 +1,37 @@
-export interface MeshDevice {
-  id: string;
-  name: string;
-  signal: number; // 0-100
-  role: "relay" | "receiver";
-  lastSeen: Date;
-}
+export type ChatMode = "public" | "private" | "findId";
 
-export interface ChatConversation {
+export interface MeshMessage {
   id: string;
-  name: string;
-  lastMessage: string;
-  lastTime: Date;
-  unread: number;
-  hops: number;
-  online: boolean;
-}
-
-export interface ChatMessage {
-  id: string;
+  senderId: string;
   text: string;
-  isOwn: boolean;
+  encrypted: boolean;
   timestamp: Date;
   hops: number;
-  delivered: boolean;
+  mode: ChatMode;
+  chunk?: { index: number; total: number };
 }
 
-export interface MeshStats {
-  nodesCount: number;
-  routeHops: number;
-  messagesSent: number;
-  messagesRelayed: number;
+export interface MeshPacket {
+  uniqueId: string;
+  senderId: string;
+  payload: string;
+  encrypted: boolean;
+  hopCount: number;
+  maxHops: number;
+  mode: ChatMode;
+  chunk?: { index: number; total: number };
+  timestamp: number;
 }
 
 export interface UserSettings {
-  nickname: string;
-  aesEnabled: boolean;
-  visible: boolean;
+  privacyCode: string;
+  channelFingerprint: string;
+  codeLocked: boolean;
+  wipeOnClose: boolean;
+}
+
+export interface PeerDevice {
+  id: string;
+  lastSeen: Date;
+  signalStrength: number;
 }

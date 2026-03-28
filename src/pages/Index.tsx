@@ -1,14 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import WelcomeScreen from "@/components/WelcomeScreen";
-import ChatList from "@/components/ChatList";
-import ChatView from "@/components/ChatView";
-import MeshStatusView from "@/components/MeshStatusView";
-import SettingsView from "@/components/SettingsView";
-import { mockConversations, mockMessages, mockDevices, mockStats, defaultSettings } from "@/data/mockData";
-import { ChatMessage, UserSettings } from "@/types/mesh";
+import ChatScreen from "@/components/ChatScreen";
+import SettingsPanel from "@/components/SettingsPanel";
+import { MeshMessage, UserSettings } from "@/types/mesh";
+import { generateUserId } from "@/lib/crypto";
 
-type View = "welcome" | "chatList" | "chat" | "meshStatus" | "settings";
+type View = "chat" | "settings";
 
 const pageVariants = {
   initial: { opacity: 0, x: 30 },
@@ -16,81 +13,86 @@ const pageVariants = {
   exit: { opacity: 0, x: -30 },
 };
 
+const STORAGE_KEY = "bluemesh-userid";
+
 const Index = () => {
-  const [view, setView] = useState<View>("welcome");
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState(mockMessages);
-  const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+  const [view, setView] = useState<View>("chat");
+  const [messages, setMessages] = useState<MeshMessage[]>([]);
+  const [userId] = useState<string>(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return stored;
+    const id = generateUserId();
+    localStorage.setItem(STORAGE_KEY, id);
+    return id;
+  });
+  const [settings, setSettings] = useState<UserSettings>({
+    privacyCode: "",
+    channelFingerprint: "",
+    codeLocked: false,
+    wipeOnClose: false,
+  });
 
-  const openChat = (id: string) => {
-    setActiveChatId(id);
-    setView("chat");
-  };
-
-  const sendMessage = (chatId: string, text: string) => {
-    const newMsg: ChatMessage = {
-      id: `m-${Date.now()}`,
-      text,
-      isOwn: true,
-      timestamp: new Date(),
-      hops: Math.floor(Math.random() * 3) + 1,
-      delivered: true,
+  // Wipe on close
+  useEffect(() => {
+    if (!settings.wipeOnClose) return;
+    const handleUnload = () => {
+      setMessages([]);
     };
-    setMessages((prev) => ({
-      ...prev,
-      [chatId]: [...(prev[chatId] || []), newMsg],
-    }));
-  };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [settings.wipeOnClose]);
 
-  const activeConv = mockConversations.find((c) => c.id === activeChatId);
+  // Simulate incoming messages for demo
+  useEffect(() => {
+    const demoMessages: MeshMessage[] = [
+      {
+        id: "demo-1",
+        senderId: "user#8821",
+        text: "Moro! Kuuluuko mesh-verkossa?",
+        encrypted: false,
+        timestamp: new Date(Date.now() - 120000),
+        hops: 2,
+        mode: "public",
+      },
+      {
+        id: "demo-2",
+        senderId: "user#3347",
+        text: "Joo kuuluu! 3 hoppia tänne 🎉",
+        encrypted: false,
+        timestamp: new Date(Date.now() - 60000),
+        hops: 3,
+        mode: "public",
+      },
+    ];
+    setMessages(demoMessages);
+  }, []);
+
+  const handleSend = useCallback((msg: MeshMessage) => {
+    setMessages((prev) => [...prev, msg]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto">
       <AnimatePresence mode="wait">
-        {view === "welcome" && (
-          <motion.div key="welcome" {...pageVariants} transition={{ duration: 0.25 }}>
-            <WelcomeScreen onStart={() => setView("chatList")} />
-          </motion.div>
-        )}
-        {view === "chatList" && (
-          <motion.div key="chatList" {...pageVariants} transition={{ duration: 0.25 }}>
-            <ChatList
-              conversations={mockConversations}
-              stats={mockStats}
-              onSelectChat={openChat}
-              onOpenMeshStatus={() => setView("meshStatus")}
+        {view === "chat" && (
+          <motion.div key="chat" {...pageVariants} transition={{ duration: 0.2 }}>
+            <ChatScreen
+              userId={userId}
+              messages={messages}
+              onSend={handleSend}
               onOpenSettings={() => setView("settings")}
-              onNewChat={() => {}}
-            />
-          </motion.div>
-        )}
-        {view === "chat" && activeChatId && activeConv && (
-          <motion.div key="chat" {...pageVariants} transition={{ duration: 0.25 }}>
-            <ChatView
-              chatId={activeChatId}
-              name={activeConv.name}
-              messages={messages[activeChatId] || []}
-              onBack={() => setView("chatList")}
-              onSend={sendMessage}
-            />
-          </motion.div>
-        )}
-        {view === "meshStatus" && (
-          <motion.div key="meshStatus" {...pageVariants} transition={{ duration: 0.25 }}>
-            <MeshStatusView
-              devices={mockDevices}
-              stats={mockStats}
-              onBack={() => setView("chatList")}
+              privacyCode={settings.privacyCode}
+              codeLocked={settings.codeLocked}
             />
           </motion.div>
         )}
         {view === "settings" && (
-          <motion.div key="settings" {...pageVariants} transition={{ duration: 0.25 }}>
-            <SettingsView
+          <motion.div key="settings" {...pageVariants} transition={{ duration: 0.2 }}>
+            <SettingsPanel
               settings={settings}
-              stats={mockStats}
-              onBack={() => setView("chatList")}
-              onUpdateSettings={setSettings}
+              userId={userId}
+              onUpdate={setSettings}
+              onBack={() => setView("chat")}
             />
           </motion.div>
         )}
