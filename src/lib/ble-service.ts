@@ -560,6 +560,11 @@ class BlueMeshBleService {
   }
 
   async disconnect(deviceId: string): Promise<void> {
+    // Cancel any pending reconnect for this device
+    const timer = this.reconnectTimers.get(deviceId);
+    if (timer) { clearTimeout(timer); this.reconnectTimers.delete(deviceId); }
+    this.reconnectAttempts.delete(deviceId);
+
     try {
       await BluetoothLowEnergy.stopCharacteristicNotifications({
         deviceId,
@@ -576,6 +581,7 @@ class BlueMeshBleService {
   }
 
   async disconnectAll(): Promise<void> {
+    this.cancelAllReconnects();
     for (const deviceId of this.connectedDevices.keys()) {
       await this.disconnect(deviceId);
     }
