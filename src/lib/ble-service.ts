@@ -345,8 +345,10 @@ class BlueMeshBleService {
       await BluetoothLowEnergy.connect({ deviceId });
 
       // Discover services
-      const { services } = await BluetoothLowEnergy.discoverServices({ deviceId });
-      this.log('info', `Palvelut löydetty: ${services?.length ?? 0} kpl`);
+      await BluetoothLowEnergy.discoverServices({ deviceId });
+      const servicesResult = await BluetoothLowEnergy.getServices({ deviceId });
+      const services = (servicesResult as any)?.services ?? [];
+      this.log('info', `Palvelut löydetty: ${services.length} kpl`);
 
       const hasBlueMesh = services?.some((s: any) =>
         (s.id || s.uuid || '').toLowerCase() === BLUEMESH_SERVICE_UUID.toLowerCase()
