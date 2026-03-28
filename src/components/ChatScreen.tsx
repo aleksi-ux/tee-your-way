@@ -71,20 +71,19 @@ const ChatScreen = ({
     if (!input.trim()) return;
     const text = input.trim();
 
-    let payload = text;
-    let encrypted = false;
+    const useEncryption = mode === "private" && privacyCode && codeLocked;
+    const packets = await createPackets(
+      userId,
+      text,
+      mode,
+      useEncryption ? privacyCode : undefined
+    );
 
-    if (mode === "private" && privacyCode && codeLocked) {
-      payload = await encryptMessage(text, privacyCode);
-      encrypted = true;
-    }
-
-    const packets = createPackets(userId, payload, encrypted, mode);
     const msg: MeshMessage = {
       id: packets[0].uniqueId,
       senderId: userId,
-      text: payload,
-      encrypted,
+      text: useEncryption ? packets[0].payload : text,
+      encrypted: !!useEncryption,
       timestamp: new Date(),
       hops: 0,
       mode,
