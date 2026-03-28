@@ -51,6 +51,7 @@ const ChatScreen = ({
   privacyCode,
   codeLocked,
   bleConnected,
+  bleStatus,
 }: ChatScreenProps) => {
   const [mode, setMode] = useState<ChatMode>("public");
   const [input, setInput] = useState("");
@@ -203,6 +204,11 @@ const ChatScreen = ({
 
       {/* Messages */}
       <ScrollArea className="flex-1 px-4 py-3">
+        {bleStatus && (
+          <div className="flex items-center justify-center py-20">
+            {bleStatus}
+          </div>
+        )}
         <div className="flex flex-col gap-2.5 max-w-lg mx-auto">
           <AnimatePresence>
             {filteredMessages.map((msg) => {
