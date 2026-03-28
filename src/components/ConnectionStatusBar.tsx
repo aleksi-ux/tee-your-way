@@ -27,17 +27,19 @@ const ConnectionStatusBar = ({ state, connectedCount, error, onTap }: Props) => 
   return (
     <button
       onClick={onTap}
-      className="w-full flex items-center gap-2 px-4 py-2 border-b border-border/50 bg-card/40 hover:bg-card/60 transition-colors"
+      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-card/60 backdrop-blur-md border border-border/50 shadow-lg transition-all hover:bg-card/80"
     >
-      <Icon className={`w-3.5 h-3.5 ${config.color} ${isAnimated ? 'animate-spin' : ''}`} />
-      <span className={`text-xs font-medium ${config.color}`}>
+      <Icon className={`w-10 h-10 ${config.color} ${isAnimated ? 'animate-spin' : ''}`} />
+      <span className={`text-sm font-semibold ${config.color}`}>
         {state === 'connected' && connectedCount > 0
           ? `${connectedCount} laite yhdistetty`
           : error || config.label}
       </span>
-      <span className="ml-auto text-[10px] text-muted-foreground/50">
-        {state === 'idle' || state === 'disconnected' ? 'Napauta etsiäksesi' : ''}
-      </span>
+      {(state === 'idle' || state === 'disconnected') && (
+        <span className="text-xs text-muted-foreground/70">
+          Napauta etsiäksesi laitteita
+        </span>
+      )}
     </button>
   );
 };
