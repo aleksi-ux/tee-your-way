@@ -155,7 +155,22 @@ class BlueMeshBleService {
       this.setState('initializing');
       this.log('info', 'Alustetaan Bluetooth LE...');
 
-      await BluetoothLowEnergy.initialize();
+      // Request permissions first on Android
+      if (this.isNative()) {
+        try {
+          await BluetoothLowEnergy.requestPermissions();
+          this.log('info', 'BLE-oikeudet myönnetty');
+        } catch (permErr: any) {
+          this.log('warn', 'Oikeuspyyntö: ' + (permErr?.message || ''));
+        }
+      }
+
+      // Initialize in peripheral mode on native so we can both scan AND advertise
+      if (this.isNative()) {
+        await BluetoothLowEnergy.initialize({ mode: 'peripheral' } as any);
+      } else {
+        await BluetoothLowEnergy.initialize();
+      }
 
       const { available } = await BluetoothLowEnergy.isAvailable();
       if (!available) {
@@ -185,6 +200,19 @@ class BlueMeshBleService {
       BluetoothLowEnergy.addListener('characteristicChanged', (event: any) => {
         if (event.characteristic === MESSAGE_CHAR_UUID) {
           this.handleIncomingData(event.deviceId, event.value);
+        }
+      });
+
+      // Listen for write requests when acting as peripheral
+      BluetoothLowEnergy.addListener('characteristicWriteRequest' as any, (event: any) => {
+        this.log('info', `Kirjoituspyyntö vastaanotettu: char=${event?.characteristic?.slice(-4)}`);
+        if (event?.characteristic === MESSAGE_CHAR_UUID && event?.value) {
+          this.handleIncomingData(event.deviceId || 'peripheral-client', event.value);
+        }
+        if (event?.characteristic === IDENTITY_CHAR_UUID && event?.value) {
+          const decoder = new TextDecoder();
+          const remoteId = decoder.decode(new Uint8Array(event.value));
+          this.log('info', `Vastapuolen tunnus (peripheral): ${remoteId}`);
         }
       });
 
