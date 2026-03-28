@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Send, Circle, Settings, Lock, Unlock, Search } from "lucide-react";
+import { Send, Circle, Settings, Lock, Unlock, Search, Bluetooth, Bug } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,8 +19,11 @@ interface ChatScreenProps {
   messages: MeshMessage[];
   onSend: (msg: MeshMessage) => void;
   onOpenSettings: () => void;
+  onOpenScanner?: () => void;
+  onOpenDebug?: () => void;
   privacyCode: string;
   codeLocked: boolean;
+  bleConnected?: boolean;
 }
 
 const MAX_CHARS = 80;
@@ -42,8 +45,11 @@ const ChatScreen = ({
   messages,
   onSend,
   onOpenSettings,
+  onOpenScanner,
+  onOpenDebug,
   privacyCode,
   codeLocked,
+  bleConnected,
 }: ChatScreenProps) => {
   const [mode, setMode] = useState<ChatMode>("public");
   const [input, setInput] = useState("");
@@ -162,14 +168,21 @@ const ChatScreen = ({
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenSettings}
-          className="ml-2 text-muted-foreground hover:text-foreground"
-        >
-          <Settings className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-1 ml-2">
+          {onOpenScanner && (
+            <Button variant="ghost" size="icon" onClick={onOpenScanner} className="text-muted-foreground hover:text-foreground">
+              <Bluetooth className="w-5 h-5" />
+            </Button>
+          )}
+          {onOpenDebug && (
+            <Button variant="ghost" size="icon" onClick={onOpenDebug} className="text-muted-foreground hover:text-foreground">
+              <Bug className="w-4 h-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={onOpenSettings} className="text-muted-foreground hover:text-foreground">
+            <Settings className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Mode indicator */}
