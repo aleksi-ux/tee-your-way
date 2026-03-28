@@ -45,8 +45,11 @@ const ChatScreen = ({
   messages,
   onSend,
   onOpenSettings,
+  onOpenScanner,
+  onOpenDebug,
   privacyCode,
   codeLocked,
+  bleConnected,
 }: ChatScreenProps) => {
   const [mode, setMode] = useState<ChatMode>("public");
   const [input, setInput] = useState("");
