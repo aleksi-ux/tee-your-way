@@ -158,6 +158,12 @@ class BlueMeshBleService {
 
       this.isInitialized = true;
       this.log('info', 'Bluetooth LE alustettu onnistuneesti');
+
+      // Käynnistä mainostus vain natiivissa ympäristössä
+      if (this.isNative()) {
+        await this.startAdvertising();
+      }
+
       this.setState('idle');
       return true;
     } catch (error: any) {
@@ -165,6 +171,45 @@ class BlueMeshBleService {
       this.log('error', `Alustus epäonnistui: ${msg}`);
       this.setState('error', `Bluetooth-alustus epäonnistui: ${msg}`);
       return false;
+    }
+  }
+
+  /** Start advertising BlueMesh service so other devices can discover us */
+  async startAdvertising(): Promise<void> {
+    if (!this.isNative()) {
+      this.log('warn', 'Mainostusta ei tueta selainympäristössä');
+      return;
+    }
+
+    try {
+      this.log('info', 'Käynnistetään BLE-mainostus...');
+
+      // Rekisteröidään palvelu ja karakteristiikat
+      await BleClient.addService({
+        uuid: BLUEMESH_SERVICE_UUID,
+        characteristics: [
+          {
+            uuid: MESSAGE_CHAR_UUID,
+            properties: { read: true, write: true, notify: true },
+            permissions: { read: true, write: true }
+          },
+          {
+            uuid: IDENTITY_CHAR_UUID,
+            properties: { read: true, write: true },
+            permissions: { read: true, write: true }
+          }
+        ]
+      });
+
+      // Käynnistetään mainostus
+      await BleClient.startAdvertising({
+        services: [BLUEMESH_SERVICE_UUID],
+        name: this.userId ? `BlueMesh-${this.userId}` : 'BlueMesh-node'
+      });
+
+      this.log('info', 'BLE-mainostus käynnissä');
+    } catch (error: any) {
+      this.log('error', 'Mainostus epäonnistui: ' + (error?.message || 'tuntematon virhe'));
     }
   }
 
