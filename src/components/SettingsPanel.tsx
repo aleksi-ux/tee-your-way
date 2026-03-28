@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Lock, Unlock, Trash2, Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Lock, Unlock, Trash2, Eye, EyeOff, Fingerprint, ShieldCheck, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { UserSettings } from "@/types/mesh";
 import { generateFingerprint } from "@/lib/crypto";
+import { bleService } from "@/lib/ble-service";
 
 interface SettingsPanelProps {
   settings: UserSettings;
