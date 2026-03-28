@@ -174,43 +174,12 @@ class BlueMeshBleService {
     }
   }
 
-  /** Start advertising BlueMesh service so other devices can discover us */
+  /** Start advertising BlueMesh service so other devices can discover us.
+   *  NOTE: addService/startAdvertising are NOT available in @capacitor-community/bluetooth-le.
+   *  Advertising requires a native plugin or custom Capacitor plugin.
+   *  This is a no-op placeholder for future native implementation. */
   async startAdvertising(): Promise<void> {
-    if (!this.isNative()) {
-      this.log('warn', 'Mainostusta ei tueta selainympäristössä');
-      return;
-    }
-
-    try {
-      this.log('info', 'Käynnistetään BLE-mainostus...');
-
-      // Rekisteröidään palvelu ja karakteristiikat
-      await BleClient.addService({
-        uuid: BLUEMESH_SERVICE_UUID,
-        characteristics: [
-          {
-            uuid: MESSAGE_CHAR_UUID,
-            properties: { read: true, write: true, notify: true },
-            permissions: { read: true, write: true }
-          },
-          {
-            uuid: IDENTITY_CHAR_UUID,
-            properties: { read: true, write: true },
-            permissions: { read: true, write: true }
-          }
-        ]
-      });
-
-      // Käynnistetään mainostus
-      await BleClient.startAdvertising({
-        services: [BLUEMESH_SERVICE_UUID],
-        name: this.userId ? `BlueMesh-${this.userId}` : 'BlueMesh-node'
-      });
-
-      this.log('info', 'BLE-mainostus käynnissä');
-    } catch (error: any) {
-      this.log('error', 'Mainostus epäonnistui: ' + (error?.message || 'tuntematon virhe'));
-    }
+    this.log('warn', 'BLE-mainostus ei ole vielä tuettu tällä pluginilla. Käytä skannausta löytääksesi laitteita.');
   }
 
   /** Start scanning for BlueMesh devices */
